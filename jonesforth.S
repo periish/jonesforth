@@ -560,10 +560,37 @@ stack points ->	| addr of DOUBLE   |	   + 4 =   +------------------+
 	to "quit" your program and go back to interpreting).
 */
 
+  .data
+  msg: .string "hello world!\n"
+  read_fd: .int 0
+
 /* Assembler entry point. */
 	.text
 	.globl _start
 _start:
+  add $8,%esp // discard argc and argv[0]
+
+  pop %ecx
+  // check if there is a filename argument
+  jecxz 1f
+  
+  //mov $4, %eax
+  //mov $1, %ebx
+  //mov $msg, %ecx
+  //mov $13, %edx
+  //int $0x80
+  
+  // TODO: use __NR_OPEN insteead of $5
+  mov $5,%eax
+  mov %ecx,%ebx
+  mov $0,%ecx
+  // TODO: check what permission we actually need
+  mov $0777,%edx
+  int $0x80
+  mov %eax, (read_fd)
+  
+1:
+  sub $8,%esp
 	cld
 	mov %esp,var_S0		// Save the initial data stack pointer in FORTH variable S0.
 	mov $return_stack_top,%ebp // Initialise the return stack.
@@ -1281,7 +1308,7 @@ _KEY:
 	ret
 
 1:	// Out of input; use read(2) to fetch more input from stdin.
-	xor %ebx,%ebx		// 1st param: stdin
+	mov (read_fd),%ebx		// 1st param: stdin
 	mov $buffer,%ecx	// 2nd param: buffer
 	mov %ecx,currkey
 	mov $BUFFER_SIZE,%edx	// 3rd param: max length
@@ -1293,10 +1320,16 @@ _KEY:
 	mov %ecx,bufftop
 	jmp _KEY
 
-2:	// Error or end of input: exit the program.
+2:	// Error or end of input: swap to stdin or exit program.
+  test %ebx,%ebx
+  jnz 3f
 	xor %ebx,%ebx
 	mov $__NR_exit,%eax	// syscall: exit
 	int $0x80
+
+3: // swap to stdin
+  movl $0,(read_fd)
+  jmp 1b
 
 	.data
 	.align 4
