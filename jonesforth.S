@@ -562,7 +562,11 @@ stack points ->	| addr of DOUBLE   |	   + 4 =   +------------------+
 	.data
 	.align 4
 	bootstrap_path: .string "bootstrap.f"
+	bootstrap_fd: .int 0
+
+	pipefd:
 	read_fd: .int 0
+	write_fd: .int 0
 /* Assembler entry point. */
 	.text
 	.globl _start
@@ -572,12 +576,33 @@ _start:
 	mov $return_stack_top,%ebp // Initialise the return stack.
 	call set_up_data_segment
 
+	mov $331,%eax	// syscall: pipe2
+	mov $pipefd,%ebx
+	mov $2048,%ecx	// O_NONBLOCK
+	int $0x80
+
 	mov $5,%eax	// syscall: open
 	mov $bootstrap_path,%ebx 
 	mov $0,%ecx	// O_RDONLY
 	int $0x80
-	mov %eax,read_fd
+	mov %eax,bootstrap_fd
 
+1:	// copy the file into the pipe
+	mov $3,%eax	// sycall: read
+	mov bootstrap_fd,%ebx
+	mov $buffer,%ecx
+	mov $BUFFER_SIZE,%edx
+	int $0x80
+	test %eax,%eax	// exit loop when we have exhausted the file
+	jbe 2f
+
+	mov %eax,%edx	// write the same number of bytes we read
+	mov $4,%eax	// syscall: write
+	mov write_fd,%ebx
+	int $0x80
+	jmp 1b
+
+2:	// copy the file into the pipe
 	mov $cold_start,%esi	// Initialise interpreter.
 	NEXT			// Run interpreter!
 
@@ -1294,10 +1319,10 @@ _KEY:
 	mov $buffer,%ecx	// 2nd param: buffer
 	mov %ecx,currkey
 	mov $BUFFER_SIZE,%edx	// 3rd param: max length
-	mov $__NR_read,%eax	// syscall: read
+	mov $3,%eax	// syscall: read
 	int $0x80
 	test %eax,%eax		// If %eax <= 0, then exit.
-	jbe 2f
+	jle 2f
 	addl %eax,%ecx		// buffer+%eax = bufftop
 	mov %ecx,bufftop
 	jmp _KEY
