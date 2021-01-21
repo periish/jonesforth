@@ -561,12 +561,13 @@ stack points ->	| addr of DOUBLE   |	   + 4 =   +------------------+
 */
 	.data
 	.align 4
-	bootstrap_path: .string "bootstrap.f"
-	bootstrap_fd: .int 0
+bootstrap_path: .string "bootstrap.f"
+bootstrap_fd: .int 0
 
-	pipefd:
-	read_fd: .int 0
-	write_fd: .int 0
+pipefd:
+read_fd: .int 0
+write_fd: .int 0
+
 /* Assembler entry point. */
 	.text
 	.globl _start
@@ -1316,28 +1317,29 @@ _KEY:
 
 1:	// Out of input; use read(2) to fetch more input.
 	mov read_fd,%ebx	// 1st param: file descriptor
+2:
 	mov $buffer,%ecx	// 2nd param: buffer
 	mov %ecx,currkey
 	mov $BUFFER_SIZE,%edx	// 3rd param: max length
-	mov $3,%eax	// syscall: read
+	mov $__NR_read,%eax	// syscall: read
 	int $0x80
 	test %eax,%eax		// If %eax <= 0, then exit.
-	jle 2f
+	jle 3f
 	addl %eax,%ecx		// buffer+%eax = bufftop
 	mov %ecx,bufftop
 	jmp _KEY
 
-2:	// Error or end of input
+3:	// Error or end of input
 	test %ebx,%ebx	// Swap to stdin if we are reading from the file
-	jnz 3f
+	jnz 4f
 	
 	xor %ebx,%ebx // Exit if there is no more stdin
 	mov $__NR_exit,%eax	// syscall: exit
 	int $0x80
 
-3:	// Swap to stdin
-	movl $0,read_fd
-	jmp 1b
+4:	// Swap to stdin
+	movl $0,%ebx
+	jmp 2b
 
 	.data
 	.align 4
@@ -1354,10 +1356,17 @@ bufftop:
 
 	defcode "EMIT",4,,EMIT
 	pop %eax
+	mov $1,%ebx
+	call _EMIT
+	NEXT
+	
+	defcode "EMITP",5,,EMITP
+	pop %eax
+	mov write_fd,%ebx
 	call _EMIT
 	NEXT
 _EMIT:
-	mov $1,%ebx		// 1st param: stdout
+	//mov $1,%ebx		// 1st param: stdout
 
 	// write needs the address of the byte to write
 	mov %al,emit_scratch
@@ -2099,6 +2108,14 @@ _COMMA:
 
 	defcode "TELL",4,,TELL
 	mov $1,%ebx		// 1st param: stdout
+	pop %edx		// 3rd param: length of string
+	pop %ecx		// 2nd param: address of string
+	mov $__NR_write,%eax	// write syscall
+	int $0x80
+	NEXT
+	
+	defcode "TELLP",5,,TELLP
+	mov write_fd,%ebx		// 1st param: stdout
 	pop %edx		// 3rd param: length of string
 	pop %ecx		// 2nd param: address of string
 	mov $__NR_write,%eax	// write syscall
